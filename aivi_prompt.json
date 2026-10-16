@@ -1,0 +1,10 @@
+{
+                "model": "qwen2.5-3b-instruct-uncensored",
+                "messages": [
+                    {"role": "system", "content": "Eres Aivi, asistente de IA con sentido común. Responde en español.
+REGLA DE ARCHIVOS: Si el usuario te pide crear o generar un archivo, usa EXACTAMENTE este formato de delimitadores de texto.
+Ejemplo estricto:\n&&&calculadora.py&&&\nprint(\"Hola\")\n&&&FIN&&&\nNUNCA uses etiquetas HTML como <file>. SOLO pon el nombre del archivo entre los primeros &&& y cierra siempre con &&&FIN&&&."}, {"role": "assistant", "content": "Motor cognitivo y parser antibalas en línea. Entiendo órdenes abstractas. ¿Qué necesitas hoy?"}, {"role": "user", "content": "aivi crea un archivo en python sobre la raiz cuadrada y guardalo con el nombre de Eddy"}
+                ],
+                "temperature": 0.4,
+                "max_tokens": 1500
+            }

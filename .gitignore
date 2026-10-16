@@ -1,0 +1,40 @@
+# ==========================================
+# IGNORAR ARCHIVOS COMPILADOS Y BINARIOS
+# ==========================================
+# Carpetas de compilación de Rust
+target/
+**/target/
+
+# Ejecutables y librerías dinámicas (El motor compilado)
+*.exe
+*.dll
+
+# Librerías estáticas pesadas (Para evitar el bloqueo de 100MB de GitHub)
+*.lib
+native/*.lib
+motor_inferencia/native/*.lib
+
+# ==========================================
+# IGNORAR MODELOS DE IA Y BASES DE DATOS
+# ==========================================
+models/
+*.bin
+*.onnx
+*.ort
+*.xyron
+*.dat
+
+# ==========================================
+# IGNORAR ARCHIVOS MULTIMEDIA Y CARPETAS TEMPORALES
+# ==========================================
+*.wav
+*.bmp
+*.mp4
+*.jpg
+*.png
+work_in/
+work_out/
+personajes/
+
+# Herramientas de texto a voz
+espeak-ng-data/

@@ -1,0 +1,40 @@
+[package]
+name = "xyron_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "motor" # Obliga a Rust a compilar el archivo como "motor.dll" para FASM
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# --- Core del Motor AI (Gráficos, Tensores y Memoria) ---
+wgpu = "0.19"
+safetensors = "0.4"
+tokenizers = "0.15"
+image = "0.24"
+memmap2 = "0.9"
+bytemuck = { version = "1.14", features = ["derive"] }
+pollster = "0.3"
+
+# --- Seguridad, Criptografía y Licencias ---
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+machine-uid = "0.3" # Extrae un ID de hardware único y persistente del PC
+
+# --- Integración con la GUI de Windows (FASM) ---
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.52"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging", # Permite usar SendMessage/PostMessage
+]
+
+# --- Perfil de Producción Blindado (Anti-Cracking) ---
+[profile.release]
+strip = true        # Destruye todos los símbolos y nombres legibles
+opt-level = "z"     # Optimiza y ofusca el tamaño de las instrucciones
+lto = true          # Fusiona el código haciéndolo un solo bloque denso
+codegen-units = 1   # Evita la separación en módulos lógicos
+panic = "abort"     # Elimina los rastros y reportes de errores
