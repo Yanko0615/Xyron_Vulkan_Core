@@ -24,6 +24,10 @@ extern "C" {
 // CARGA ESTÁTICA DEL DLL (Previene fugas de memoria y colapsos de Vulkan)
 static MOTOR_DLL: OnceLock<Library> = OnceLock::new();
 
+// 🌐 ESTADO DEL IDIOMA
+#[derive(PartialEq, Clone, Copy)]
+enum Idioma { Es, En }
+
 // 🛡️ FIREWALL HEURÍSTICO
 fn sanitizar_texto_web(raw: &str) -> String {
     let lower = raw.to_lowercase();
@@ -66,14 +70,14 @@ struct ChatResponse { choices: Vec<Choice> }
 
 impl MotorLMStudio {
     pub fn nuevo() -> Self {
-        Self { api_url: "http://localhost:1234/v1/chat/completions".to_string(), max_tokens: 1500, temperatura: 0.65 }
+        Self { api_url: "http://127.0.0.1:1234/v1/chat/completions".to_string(), max_tokens: 1500, temperatura: 0.65 }
     }
 
     pub fn generar_respuesta(&self, prompt_formateado: &str) -> Result<String, String> {
         let req_body = ChatRequest {
             model: "local-model".to_string(),
             messages: vec![Message { role: "user".to_string(), content: prompt_formateado.to_string() }],
-            temperature: self.temperatura, max_tokens: self.max_tokens, stream: false, repetition_penalty: 1.15,
+            temperature: self.temperatura, max_tokens: self.max_tokens, stream: false, repetition_penalty: 1.0,
         };
         let response = ureq::post(&self.api_url).send_json(req_body).map_err(|e| format!("Error conectando: {}", e))?;
         let chat_res: ChatResponse = response.into_json().map_err(|e| format!("Error parseando: {}", e))?;
@@ -85,36 +89,9 @@ impl MotorLMStudio {
     }
 }
 
-// 🎤 SISTEMA DE VOZ CON RASTREO PID
-fn speak_organic(text: &str, active_audio_pid: Arc<Mutex<Option<u32>>>) {
-    let clean_text = text
-        .replace('&', "").replace('#', "").replace('_', " ").replace('{', "").replace('}', "")
-        .replace('[', "").replace(']', "").replace('`', "").replace('*', "").replace('|', "")
-        .replace('~', "").replace('$', "").replace('%', "").replace(':', "").replace('\\', "")
-        .replace('/', "").replace("->", " a ").replace('\'', "").replace('"', "");
-    
-    thread::spawn(move || {
-        let model_path = "es_MX-claude-high.onnx";
-        let piper_bin = "piper.exe"; 
-        let wav_path = "aivi_temp_voice.wav";
-        
-        if Path::new(model_path).exists() && Path::new(piper_bin).exists() {
-            if let Ok(mut child) = Command::new(piper_bin).args(["--model", model_path, "--output_file", wav_path]).stdin(Stdio::piped()).spawn() {
-                *active_audio_pid.lock().unwrap() = Some(child.id());
-                if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(clean_text.as_bytes()); }
-                let _ = child.wait(); 
-            }
-
-            if Path::new(wav_path).exists() {
-                let ps_cmd = format!("(New-Object Media.SoundPlayer '{}').PlaySync();", wav_path);
-                if let Ok(mut child) = Command::new("powershell").args(["-WindowStyle", "Hidden", "-Command", &ps_cmd]).spawn() {
-                    *active_audio_pid.lock().unwrap() = Some(child.id());
-                    let _ = child.wait();
-                    *active_audio_pid.lock().unwrap() = None;
-                }
-            }
-        }
-    });
+// 🎤 SISTEMA DE VOZ CON RASTREO PID (SILENCIADO)
+fn speak_organic(_text: &str, _active_audio_pid: Arc<Mutex<Option<u32>>>) {
+    // Función vaciada intencionalmente para quitarle la voz a Aivi.
 }
 
 // 👁️ FIRMA FFI PARA EL MOTOR VULKAN
@@ -209,7 +186,8 @@ struct AiviApp {
     motor: MotorLMStudio,
     estado_motor: String,
     focus_input: bool, 
-    active_audio_pid: Arc<Mutex<Option<u32>>>, 
+    active_audio_pid: Arc<Mutex<Option<u32>>>,
+    idioma: Idioma, // 🌐 CONTROL DE IDIOMA
 }
 
 impl AiviApp {
@@ -237,6 +215,7 @@ impl AiviApp {
             estado_motor: "Dolphin 3.0 + Async Vulkan Core".to_string(),
             focus_input: true, 
             active_audio_pid: Arc::new(Mutex::new(None)),
+            idioma: Idioma::Es, // 🌐 INICIA EN ESPAÑOL POR DEFECTO
         }
     }
 
@@ -446,16 +425,18 @@ impl eframe::App for AiviApp {
         ctx.set_visuals(egui::Visuals::dark());
         
         egui::SidePanel::right("telemetry_panel").show(ctx, |ui| {
-            ui.heading("⚡ NEURAL METRICS");
+            // 🌐 PANEL LATERAL MULTI-IDIOMA
+            ui.heading(if self.idioma == Idioma::Es { "⚡ MÉTRICAS NEURALES" } else { "⚡ NEURAL METRICS" });
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_GREEN, "🛡 Firewall & Lorebook Activos");
+            ui.colored_label(egui::Color32::LIGHT_GREEN, if self.idioma == Idioma::Es { "🛡 Firewall & Lorebook Activos" } else { "🛡 Firewall & Lorebook Active" });
             ui.colored_label(egui::Color32::YELLOW, "🔥 FFI Vulkan Architecture (Hybrid)");
             ui.colored_label(egui::Color32::LIGHT_BLUE, "🌟 LoRAs & Wan 2.1 Ready");
 
             ui.add_space(15.0);
-            ui.heading("📦 CEREBRO (LM Studio)");
+            ui.heading(if self.idioma == Idioma::Es { "📦 CEREBRO (LM Studio)" } else { "📦 BRAIN (LM Studio)" });
             ui.separator();
-            ui.label(format!("Estado: {}", self.estado_motor));
+            let txt_estado = if self.idioma == Idioma::Es { "Estado" } else { "Status" };
+            ui.label(format!("{}: {}", txt_estado, self.estado_motor));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -465,15 +446,24 @@ impl eframe::App for AiviApp {
             let scroll_area = egui::ScrollArea::vertical().max_height(ui.available_height() - 70.0).stick_to_bottom(true);
             scroll_area.show(ui, |ui| {
                 for (speaker, text) in &self.chat_history {
-                    if speaker == "Tú" { ui.colored_label(egui::Color32::LIGHT_GREEN, format!("Tú: {}", text)); } 
-                    else if speaker == "🧠 Subconsciente" { ui.colored_label(egui::Color32::ORANGE, format!("🧠 Subconsciente: {}", text)); } 
+                    // 🌐 NOMBRES DE USUARIO MULTI-IDIOMA
+                    let spk_display = if self.idioma == Idioma::En && speaker == "Tú" { 
+                        "You" 
+                    } else if self.idioma == Idioma::En && speaker == "🧠 Subconsciente" {
+                        "🧠 Subconscious"
+                    } else { 
+                        speaker 
+                    };
+                    
+                    if speaker == "Tú" { ui.colored_label(egui::Color32::LIGHT_GREEN, format!("{}: {}", spk_display, text)); } 
+                    else if speaker == "🧠 Subconsciente" { ui.colored_label(egui::Color32::ORANGE, format!("{}: {}", spk_display, text)); } 
                     else if speaker == "Aivi" {
                         if text.contains("✅") || text.contains("❌") || text.contains("🔥") || text.contains("🌟") || text.contains("🎬") { 
                             ui.colored_label(egui::Color32::YELLOW, format!("Aivi: {}", text)); 
                         } else { 
                             ui.colored_label(egui::Color32::LIGHT_BLUE, format!("Aivi: {}", text)); 
                         }
-                    } else { ui.colored_label(egui::Color32::GRAY, format!("{}: {}", speaker, text)); }
+                    } else { ui.colored_label(egui::Color32::GRAY, format!("{}: {}", spk_display, text)); }
                     ui.separator();
                 }
             });
@@ -483,7 +473,10 @@ impl eframe::App for AiviApp {
                 if self.focus_input { text_edit.request_focus(); self.focus_input = false; }
 
                 let mut submitted = false;
-                if ui.button("Enviar Comando").clicked() || (text_edit.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter))) { submitted = true; }
+                
+                // 🌐 BOTÓN DE ENVIAR MULTI-IDIOMA
+                let btn_enviar = if self.idioma == Idioma::Es { "Enviar Comando" } else { "Send Command" };
+                if ui.button(btn_enviar).clicked() || (text_edit.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter))) { submitted = true; }
 
                 if submitted && !self.input_text.is_empty() {
                     let query = self.input_text.clone();
@@ -495,13 +488,19 @@ impl eframe::App for AiviApp {
                     self.focus_input = true;
                 }
 
-                if ui.button("🎤 Hablar").clicked() {
+                // 🌐 BOTÓN DE HABLAR MULTI-IDIOMA
+                let btn_hablar = if self.idioma == Idioma::Es { "🎤 Hablar" } else { "🎤 Speak" };
+                if ui.button(btn_hablar).clicked() {
                     self.interrumpir_voz_actual();
                     let tx_clone = self.autonomous_sender.clone();
                     let ctx_clone = ctx.clone();
                     let stdin_arc = self.python_stdin.clone();
                     let stdout_arc = self.python_stdout.clone();
-                    self.chat_history.push(("Aivi".to_string(), "🎤 Escuchando...".to_string()));
+                    
+                    let msg_escuchando = if self.idioma == Idioma::Es { "🎤 Escuchando..." } else { "🎤 Listening..." };
+                    self.chat_history.push(("Aivi".to_string(), msg_escuchando.to_string()));
+                    
+                    let idioma_actual = self.idioma; // Copiamos el estado para pasarlo al hilo de forma segura
                     
                     thread::spawn(move || {
                         if let Ok(mut stdin) = stdin_arc.lock() { let _ = writeln!(stdin, "RECORD"); }
@@ -509,17 +508,34 @@ impl eframe::App for AiviApp {
                         if let Ok(mut stdout) = stdout_arc.lock() { let _ = stdout.read_line(&mut resp); }
                         let linea = resp.trim().to_string();
                         if !linea.is_empty() && !linea.starts_with("ERROR:") { let _ = tx_clone.send(("Tú".to_string(), linea)); } 
-                        else if linea.is_empty() { let _ = tx_clone.send(("Aivi".to_string(), "❌ Silencio.".to_string())); } 
+                        else if linea.is_empty() { 
+                            let msg_silencio = if idioma_actual == Idioma::Es { "❌ Silencio." } else { "❌ Silence." };
+                            let _ = tx_clone.send(("Aivi".to_string(), msg_silencio.to_string())); 
+                        } 
                         else { let _ = tx_clone.send(("Aivi".to_string(), format!("❌ Error: {}", linea))); }
                         ctx_clone.request_repaint();
                     });
                     self.focus_input = true;
                 }
 
-                if ui.button("🗑️ Limpiar").clicked() {
+                // 🌐 BOTÓN DE LIMPIAR MULTI-IDIOMA
+                let btn_limpiar = if self.idioma == Idioma::Es { "🗑️ Limpiar" } else { "🗑️ Clear" };
+                if ui.button(btn_limpiar).clicked() {
                     self.chat_history.clear();
-                    self.chat_history.push(("Aivi".to_string(), "Memoria limpiada.".to_string()));
+                    let msg_limpio = if self.idioma == Idioma::Es { "Memoria limpiada." } else { "Memory cleared." };
+                    self.chat_history.push(("Aivi".to_string(), msg_limpio.to_string()));
                     self.focus_input = true;
+                }
+
+                ui.separator();
+                
+                // 🌐 BOTÓN INTERRUPTOR (TOGGLE) DE IDIOMA
+                let txt_btn_idioma = if self.idioma == Idioma::Es { "🌐 EN" } else { "🌐 ES" };
+                if ui.button(txt_btn_idioma).clicked() {
+                    self.idioma = if self.idioma == Idioma::Es { Idioma::En } else { Idioma::Es };
+                    // Mensaje dinámico opcional en el chat para confirmar el cambio
+                    let msg_cambio = if self.idioma == Idioma::Es { "Idioma de la interfaz cambiado a Español." } else { "Interface language changed to English." };
+                    self.chat_history.push(("Aivi".to_string(), msg_cambio.to_string()));
                 }
             });
         });
@@ -527,5 +543,9 @@ impl eframe::App for AiviApp {
 }
 
 fn main() -> Result<(), eframe::Error> {
-    eframe::run_native("Aivi v5.0 - Flux & Wan 2.1 Ready", eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 750.0]), ..Default::default() }, Box::new(|cc| Ok(Box::new(AiviApp::new(cc.egui_ctx.clone())))))
+    eframe::run_native(
+        "Aivi v5.0 - Flux & Wan 2.1 Ready", 
+        eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 750.0]), ..Default::default() }, 
+        Box::new(|cc| Ok(Box::new(AiviApp::new(cc.egui_ctx.clone()))))
+    )
 }
